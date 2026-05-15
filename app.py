@@ -18,9 +18,25 @@ def load_data(worksheet_name):
 def update_data(worksheet_name, df):
     conn.update(worksheet=worksheet_name, data=df)
 
-def send_attendance_poll(event_id, event_name, date_str): # event_idを追加
+# Slack IDを名前に変換するためのマッピングを作成
+def get_id_to_name_map():
+    df_members = load_data("members")
+    # {SlackID: 名前} の辞書を作る
+    return dict(zip(df_members['slack_id'], df_members['name']))
+
+# IDのカンマ区切り文字列を名前のカンマ区切りに変換
+def convert_ids_to_names(id_str, name_map):
+    if pd.isna(id_str) or id_str == "":
+        return ""
+    ids = str(id_str).split(",")
+    names = [name_map.get(sid.strip(), sid.strip()) for sid in ids if sid.strip()]
+    return ", ".join(names)
+
+def send_attendance_poll(event_id, event_name, date_str):
+    if "slack_token" not in st.secrets:
+        return None
     token = st.secrets["slack_token"]
-    channel = "#random"
+    channel = "#general" # 送信先チャンネル名を確認してください
     
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": "📢 新しいイベントが登録されました"}},
@@ -29,7 +45,6 @@ def send_attendance_poll(event_id, event_name, date_str): # event_idを追加
         {
             "type": "actions",
             "elements": [
-                # value の中に event_id を埋め込む
                 {"type": "button", "text": {"type": "plain_text", "text": "出席"}, "style": "primary", "value": f"{event_id}:attend", "action_id": "attend_btn"},
                 {"type": "button", "text": {"type": "plain_text", "text": "欠席"}, "style": "danger", "value": f"{event_id}:absent", "action_id": "absent_btn"}
             ]
@@ -49,7 +64,19 @@ menu = st.sidebar.selectbox("メニューを選択", ["イベント一覧", "イ
 if menu == "イベント一覧":
     st.header("📋 登録済みイベント")
     df_ev = load_data("events")
-    st.dataframe(df_ev, use_container_width=True)
+    
+    # IDを名前に変換する処理を追加
+    try:
+        name_map = get_id_to_name_map()
+        # 表示用のコピーを作成
+        display_df = df_ev.copy()
+        display_df['attendees'] = display_df['attendees'].apply(lambda x: convert_ids_to_names(x, name_map))
+        display_df['absentees'] = display_df['absentees'].apply(lambda x: convert_ids_to_names(x, name_map))
+        
+        st.dataframe(display_df, use_container_width=True)
+    except Exception as e:
+        st.error(f"表示変換中にエラーが発生しました。membersシートの項目を確認してください: {e}")
+        st.dataframe(df_ev, use_container_width=True) # 失敗した場合はIDのまま表示
 
 # --- 2. イベント登録 ---
 elif menu == "イベント登録":
@@ -59,56 +86,43 @@ elif menu == "イベント登録":
         col1, col2 = st.columns(2)
         with col1:
             date = st.date_input("開催日", datetime.now())
-            event_name = st.text_input("イベント名", placeholder="例：月例ゼミ、打ち上げ")
+            event_name = st.text_input("イベント名", placeholder="例：月例ゼミ")
         with col2:
             location = st.text_input("場所", placeholder="例：第1会議室")
             status = st.selectbox("ステータス", ["確定", "企画中"])
         
         if st.form_submit_button("イベントを登録してSlackに通知"):
             if event_name:
-                # データ読み込みとID生成
-                df_ev = load_data("events")
-                new_id = f"e{len(df_ev) + 1:03}"
-                date_str = date.strftime('%Y-%m-%d')
-                
-                # 新規行作成
-                new_row = pd.DataFrame([{
-                    "event_id": new_id,
-                    "date": date_str,
-                    "event_name": event_name,
-                    "location": location,
-                    "status": status,
-                    "attendees": "",
-                    "absentees": ""
-                }])
-                
-                # スプレッドシート更新
-                update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
-                
-                # Slack通知送信
-                slack_res = send_attendance_poll(new_id, event_name, date_str)
-                
-                if slack_res and slack_res.status_code == 200:
-                    st.success(f"「{event_name}」を登録し、Slackに出欠アンケートを送信しました！")
-                else:
-                    st.warning("イベントは登録されましたが、Slack通知に失敗しました。")
+                try:
+                    df_ev = load_data("events")
+                    new_id = f"e{len(df_ev) + 1:03}"
+                    date_str = date.strftime('%Y-%m-%d')
+                    
+                    new_row = pd.DataFrame([{
+                        "event_id": new_id,
+                        "date": date_str,
+                        "event_name": event_name,
+                        "location": location,
+                        "status": status,
+                        "attendees": "",
+                        "absentees": ""
+                    }])
+                    
+                    update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
+                    send_attendance_poll(new_id, event_name, date_str)
+                    st.success(f"「{event_name}」を登録しました！")
+                except Exception as e:
+                    st.error(f"エラーが発生しました: {e}")
             else:
                 st.error("イベント名を入力してください。")
 
 # --- 3. メンバー管理 ---
 elif menu == "メンバー管理":
     st.header("⚙️ メンバー管理")
-    st.write("研究室メンバーのSlack IDを登録してください。リマインド時のメンションに使用します。")
-    
     df_members = load_data("members")
-    
-    # 編集可能なテーブルを表示
     edited_df = st.data_editor(df_members, num_rows="dynamic", use_container_width=True)
     
     if st.button("メンバーリストを保存"):
         update_data("members", edited_df)
         st.success("メンバーリストを更新しました！")
         st.rerun()
-
-    with st.expander("💡 Slack IDの調べ方"):
-        st.write("1. Slackで対象者のプロフィールを表示\n2. 「もっと見る」から「メンバーIDをコピー」を選択\n3. `U`から始まる英数字がIDです。")
