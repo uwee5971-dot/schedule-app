@@ -18,13 +18,9 @@ def load_data(worksheet_name):
 def update_data(worksheet_name, df):
     conn.update(worksheet=worksheet_name, data=df)
 
-def send_attendance_poll(event_name, date_str):
-    if "slack_token" not in st.secrets:
-        st.error("SlackトークンがSecretsに設定されていません。")
-        return None
-    
+def send_attendance_poll(event_id, event_name, date_str): # event_idを追加
     token = st.secrets["slack_token"]
-    channel = "#general"  # 通知を飛ばすチャンネル名
+    channel = "#general"
     
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": "📢 新しいイベントが登録されました"}},
@@ -33,8 +29,9 @@ def send_attendance_poll(event_name, date_str):
         {
             "type": "actions",
             "elements": [
-                {"type": "button", "text": {"type": "plain_text", "text": "出席"}, "style": "primary", "value": "attend", "action_id": "attend_btn"},
-                {"type": "button", "text": {"type": "plain_text", "text": "欠席"}, "style": "danger", "value": "absent", "action_id": "absent_btn"}
+                # value の中に event_id を埋め込む
+                {"type": "button", "text": {"type": "plain_text", "text": "出席"}, "style": "primary", "value": f"{event_id}:attend", "action_id": "attend_btn"},
+                {"type": "button", "text": {"type": "plain_text", "text": "欠席"}, "style": "danger", "value": f"{event_id}:absent", "action_id": "absent_btn"}
             ]
         }
     ]
