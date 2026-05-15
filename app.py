@@ -11,47 +11,51 @@ st.title("📅 研究室イベント管理")
 # スプレッドシート接続
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# --- 共通関数 ---
 def load_data(worksheet_name):
-    # SecretsからURLを取得し、末尾をエクスポート形式に強制変換して読み込む
-    base_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
-    # URLに /export が含まれていない場合は変換
-    if "/edit" in base_url:
-        url = base_url.split("/edit")[0] + f"/gviz/tq?tqx=out:csv&sheet={worksheet_name}"
-    else:
-        url = base_url
-    return pd.read_csv(url)
+    return conn.read(worksheet=worksheet_name, ttl=0)
 
 def update_data(worksheet_name, df):
-    # 更新時は標準のコネクションを使用
     conn.update(worksheet=worksheet_name, data=df)
 
 def send_attendance_poll(event_name, date_str):
+    if "slack_token" not in st.secrets:
+        st.error("SlackトークンがSecretsに設定されていません。")
+        return None
+    
     token = st.secrets["slack_token"]
-    channel = "#general" 
+    channel = "#general"  # 通知を飛ばすチャンネル名
     
     blocks = [
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"📢 *新イベントのお知らせ*"}},
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"📅 *イベント名*: {event_name}\n🗓 *日付*: {date_str}\n\n出欠を教えてください！"}},
+        {"type": "header", "text": {"type": "plain_text", "text": "📢 新しいイベントが登録されました"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*イベント名*: {event_name}\n*開催日*: {date_str}"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": "出欠を回答してください。ボタンを押すと自動で集計されます。"}},
         {
             "type": "actions",
             "elements": [
-                {"type": "button", "text": {"type": "plain_text", "text": "出席"}, "value": "attend", "style": "primary", "action_id": "attend_btn"},
-                {"type": "button", "text": {"type": "plain_text", "text": "欠席"}, "value": "absent", "style": "danger", "action_id": "absent_btn"}
+                {"type": "button", "text": {"type": "plain_text", "text": "出席"}, "style": "primary", "value": "attend", "action_id": "attend_btn"},
+                {"type": "button", "text": {"type": "plain_text", "text": "欠席"}, "style": "danger", "value": "absent", "action_id": "absent_btn"}
             ]
         }
     ]
     
-    res = requests.post(
+    return requests.post(
         "https://slack.com/api/chat.postMessage",
         headers={"Authorization": f"Bearer {token}"},
         json={"channel": channel, "blocks": blocks}
     )
-    return res
 
-# --- メニュー構成 ---
-menu = st.sidebar.selectbox("メニューを選択", ["イベント登録", "イベント一覧", "メンバー管理"])
+# --- サイドバーメニュー ---
+menu = st.sidebar.selectbox("メニューを選択", ["イベント一覧", "イベント登録", "メンバー管理"])
 
-if menu == "イベント登録":
+# --- 1. イベント一覧 ---
+if menu == "イベント一覧":
+    st.header("📋 登録済みイベント")
+    df_ev = load_data("events")
+    st.dataframe(df_ev, use_container_width=True)
+
+# --- 2. イベント登録 ---
+elif menu == "イベント登録":
     st.header("📝 新規イベントの作成")
     
     with st.form("event_form", clear_on_submit=True):
@@ -60,42 +64,54 @@ if menu == "イベント登録":
             date = st.date_input("開催日", datetime.now())
             event_name = st.text_input("イベント名", placeholder="例：月例ゼミ、打ち上げ")
         with col2:
-            location = st.text_input("場所", placeholder="例：第1会議室、Zoom")
-            status = st.selectbox("ステータス", ["企画中", "確定"])
+            location = st.text_input("場所", placeholder="例：第1会議室")
+            status = st.selectbox("ステータス", ["確定", "企画中"])
         
-        if st.form_submit_button("イベントを登録する"):
+        if st.form_submit_button("イベントを登録してSlackに通知"):
             if event_name:
-                try:
-                    df_ev = load_data("events")
-                    new_id = f"e{len(df_ev) + 1:03}"
-                    date_str = date.strftime('%Y-%m-%d')
-                    
-                    new_row = pd.DataFrame([{
-                        "event_id": new_id,
-                        "date": date_str,
-                        "event_name": event_name,
-                        "location": location,
-                        "status": status,
-                        "attendees": "",
-                        "absentees": ""
-                    }])
-                    
-                    update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
-                    slack_res = send_attendance_poll(event_name, date_str)
-                    st.success(f"イベント「{event_name}」を登録しました！")
-                except Exception as e:
-                    st.error(f"接続エラーが発生しました。スプレッドシートの共有設定が『編集者』になっているか確認してください: {e}")
+                # データ読み込みとID生成
+                df_ev = load_data("events")
+                new_id = f"e{len(df_ev) + 1:03}"
+                date_str = date.strftime('%Y-%m-%d')
+                
+                # 新規行作成
+                new_row = pd.DataFrame([{
+                    "event_id": new_id,
+                    "date": date_str,
+                    "event_name": event_name,
+                    "location": location,
+                    "status": status,
+                    "attendees": "",
+                    "absentees": ""
+                }])
+                
+                # スプレッドシート更新
+                update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
+                
+                # Slack通知送信
+                slack_res = send_attendance_poll(event_name, date_str)
+                
+                if slack_res and slack_res.status_code == 200:
+                    st.success(f"「{event_name}」を登録し、Slackに出欠アンケートを送信しました！")
+                else:
+                    st.warning("イベントは登録されましたが、Slack通知に失敗しました。")
             else:
                 st.error("イベント名を入力してください。")
 
-elif menu == "イベント一覧":
-    st.header("📋 登録済みイベント")
-    try:
-        df_ev = load_data("events")
-        st.dataframe(df_ev, use_container_width=True)
-    except Exception as e:
-        st.error(f"データの読み込みに失敗しました: {e}")
-
-else:
+# --- 3. メンバー管理 ---
+elif menu == "メンバー管理":
     st.header("⚙️ メンバー管理")
-    st.info("メンバー管理機能（開発中）")
+    st.write("研究室メンバーのSlack IDを登録してください。リマインド時のメンションに使用します。")
+    
+    df_members = load_data("members")
+    
+    # 編集可能なテーブルを表示
+    edited_df = st.data_editor(df_members, num_rows="dynamic", use_container_width=True)
+    
+    if st.button("メンバーリストを保存"):
+        update_data("members", edited_df)
+        st.success("メンバーリストを更新しました！")
+        st.rerun()
+
+    with st.expander("💡 Slack IDの調べ方"):
+        st.write("1. Slackで対象者のプロフィールを表示\n2. 「もっと見る」から「メンバーIDをコピー」を選択\n3. `U`から始まる英数字がIDです。")
