@@ -86,7 +86,7 @@ elif menu == "イベント登録":
                 update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
                 
                 # Slack通知送信
-                slack_res = send_attendance_poll(event_name, date_str)
+                slack_res = send_attendance_poll(new_id, event_name, date_str)
                 
                 if slack_res and slack_res.status_code == 200:
                     st.success(f"「{event_name}」を登録し、Slackに出欠アンケートを送信しました！")
