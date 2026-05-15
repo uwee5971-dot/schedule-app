@@ -20,7 +20,7 @@ def update_data(worksheet_name, df):
 
 def send_attendance_poll(event_id, event_name, date_str): # event_idを追加
     token = st.secrets["slack_token"]
-    channel = "#general"
+    channel = "#random"
     
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": "📢 新しいイベントが登録されました"}},
