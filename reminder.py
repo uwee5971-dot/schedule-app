@@ -28,6 +28,7 @@ def send_reminder():
         df_members = load_sheet_as_csv("members")
         
         # 明日の予定を抽出
+        df_ev['date'] = pd.to_datetime(df_ev['date'], errors='coerce').dt.strftime('%Y-%m-%d')
         upcoming_events = df_ev[df_ev['date'] == tomorrow]
         
         if upcoming_events.empty:
