@@ -57,17 +57,17 @@ def send_reminder():
                 mentions = " ".join([f"<@{sid}>" for sid in attendee_ids])
                 msg_blocks.append({
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"✅ *出席予定の皆様*\n{mentions}\n明日よろしくお願いします！"}
+                    "text": {"type": "mrkdwn", "text": f"✅ *出席予定の皆様*\n{mentions}\n明日、宜しくお願い致します！"}
                 })
 
             # 未回答者への催促（もし必要なら）
-            if no_response_ids:
-                unresponded_mentions = " ".join([f"<@{sid}>" for sid in no_response_ids])
-                msg_blocks.append({
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"❓ *出欠未回答の皆様*\n{unresponded_mentions}\nまだ回答がありません。アプリから回答をお願いします！"}
-                })
-
+            #if no_response_ids:
+             #   unresponded_mentions = " ".join([f"<@{sid}>" for sid in no_response_ids])
+              #  msg_blocks.append({
+               #     "type": "section",
+                #    "text": {"type": "mrkdwn", "text": f"❓ *出欠未回答の皆様*\n{unresponded_mentions}\nまだ回答がありません。アプリから回答をお願いします！"}
+                #})
+            
             # Slack送信
             requests.post(
                 "https://slack.com/api/chat.postMessage",
