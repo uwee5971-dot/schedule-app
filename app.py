@@ -4,7 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import requests
 
-# --- アプリ基本設定 ---
+# --- アプリ基本設定 ---F
 st.set_page_config(page_title="📅研究室イベント管理", layout="wide")
 st.title("📅 研究室イベント管理")
 
@@ -37,7 +37,7 @@ def send_attendance_poll(event_id, event_name, date_str):
     if "slack_token" not in st.secrets:
         return None
     token = st.secrets["slack_token"]
-    channel = "#general" # 通知を飛ばす実際のチャンネル名に合わせてください
+    channel = "#random" # 通知を飛ばす実際のチャンネル名に合わせてください
     
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": "📢 新しいイベントが登録されました"}},
