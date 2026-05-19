@@ -3,25 +3,31 @@ import requests
 from datetime import datetime, timedelta
 import os
 
-# GitHub Actionsで実行するため、環境変数からシークレットを取得
+# GitHub ActionsのSecretsから取得
 SLACK_TOKEN = os.environ["SLACK_TOKEN"]
 SPREADSHEET_URL = os.environ["SPREADSHEET_URL"]
 
-def load_data_from_url(worksheet_name):
-    # CSVエクスポート形式のURLに変換して読み込む
-    base_url = SPREADSHEET_URL.replace("/edit?usp=sharing", "/export?format=csv")
-    # シート名(タブ名)によってgidを指定（eventsシートを一番左と想定）
-    # 実際の設定に合わせて調整が必要な場合があります
-    url = f"{base_url}&sheet={worksheet_name}"
+def load_sheet_as_csv(worksheet_name):
+    # スプレッドシートをCSV形式で取得するためのURL変換
+    file_id = SPREADSHEET_URL.split("/d/")[1].split("/")[0]
+    # sheet_nameによってgidを自動判別するのは難しいため、URLを直書きするか
+    # 今回はevents=gid:0, members=gid:（実際のID）を指定する形にする
+    # ※eventsが最初のタブならgid=0でOK
+    gid_map = {"events": "0", "members": "1036329402"} # membersのgidは実際のURLで確認して修正してください
+    
+    url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv&gid={gid_map.get(worksheet_name, '0')}"
     return pd.read_csv(url)
 
 def send_reminder():
-    # 明日の日付を取得
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    # 日本時間で翌日の日付を取得
+    tomorrow = (datetime.now() + timedelta(hours=9) + timedelta(days=1)).strftime('%Y-%m-%d')
     
     try:
-        df_ev = load_data_from_url("events")
-        # 明日のイベントを検索
+        # データの読み込み
+        df_ev = load_sheet_as_csv("events")
+        df_members = load_sheet_as_csv("members")
+        
+        # 明日の予定を抽出
         upcoming_events = df_ev[df_ev['date'] == tomorrow]
         
         if upcoming_events.empty:
@@ -29,30 +35,49 @@ def send_reminder():
             return
 
         for _, event in upcoming_events.iterrows():
-            mentions = []
-            if pd.notna(event['attendees']) and event['attendees'] != "":
-                mentions = [f"<@{sid.strip()}>" for sid in str(event['attendees']).split(',')]
+            # 1. 出席者のリスト化とメンション作成
+            attendees_raw = str(event['attendees']) if pd.notna(event['attendees']) else ""
+            attendee_ids = [sid.strip() for sid in attendees_raw.split(",") if sid.strip()]
             
-            mention_text = " ".join(mentions) if mentions else "参加予定の皆さん"
+            # 2. 未回答者の特定 (名簿 - 出席者 - 欠席者)
+            absentees_raw = str(event['absentees']) if pd.notna(event['absentees']) else ""
+            absentee_ids = [sid.strip() for sid in absentees_raw.split(",") if sid.strip()]
             
-            message = (
-                f"🌙 *明日開催のイベントリマインド*\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"📅 *イベント*: {event['event_name']}\n"
-                f"📍 *場所*: {event['location']}\n"
-                f"👤 *対象*: {mention_text}\n\n"
-                f"明日の21時になりました。準備は大丈夫ですか？"
-            )
-            
+            all_member_ids = df_members['slack_id'].astype(str).tolist()
+            no_response_ids = [mid for mid in all_member_ids if mid not in attendee_ids and mid not in absentee_ids]
+
+            # メッセージ構築
+            msg_blocks = [
+                {"type": "header", "text": {"type": "plain_text", "text": "⏰ 明日のイベントリマインド"}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"*イベント名*: {event['event_name']}\n*場所*: {event['location']}"}}
+            ]
+
+            # 出席者へのリマインド
+            if attendee_ids:
+                mentions = " ".join([f"<@{sid}>" for sid in attendee_ids])
+                msg_blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"✅ *出席予定の皆様*\n{mentions}\n明日よろしくお願いします！"}
+                })
+
+            # 未回答者への催促（もし必要なら）
+            if no_response_ids:
+                unresponded_mentions = " ".join([f"<@{sid}>" for sid in no_response_ids])
+                msg_blocks.append({
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"❓ *出欠未回答の皆様*\n{unresponded_mentions}\nまだ回答がありません。アプリから回答をお願いします！"}
+                })
+
+            # Slack送信
             requests.post(
                 "https://slack.com/api/chat.postMessage",
                 headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-                json={"channel": "#general", "text": message}
+                json={"channel": "#general", "blocks": msg_blocks}
             )
-            print(f"Sent reminder for: {event['event_name']}")
-            
+            print(f"Reminder sent for {event['event_name']}")
+
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error occurred: {e}")
 
 if __name__ == "__main__":
     send_reminder()
