@@ -35,46 +35,50 @@ def send_reminder():
             return
 
         for _, event in upcoming_events.iterrows():
-            # 1. 出席者のリスト化とメンション作成
+            # 出席者のリスト化
             attendees_raw = str(event['attendees']) if pd.notna(event['attendees']) else ""
             attendee_ids = [sid.strip() for sid in attendees_raw.split(",") if sid.strip()]
             
-            # 2. 未回答者の特定 (名簿 - 出席者 - 欠席者)
+            # 欠席者のリスト化
             absentees_raw = str(event['absentees']) if pd.notna(event['absentees']) else ""
             absentee_ids = [sid.strip() for sid in absentees_raw.split(",") if sid.strip()]
             
-            all_member_ids = df_members['slack_id'].astype(str).tolist()
-            no_response_ids = [mid for mid in all_member_ids if mid not in attendee_ids and mid not in absentee_ids]
+            # 💡 イベントごとの「催促フラグ」を読み取る（デフォルトはTRUE）
+            is_remind_all = str(event.get('remind_all', 'TRUE')).upper() == 'TRUE'
 
-            # メッセージ構築
+            # メッセージの土台構築
             msg_blocks = [
                 {"type": "header", "text": {"type": "plain_text", "text": "⏰ 明日のイベントリマインド"}},
                 {"type": "section", "text": {"type": "mrkdwn", "text": f"*イベント名*: {event['event_name']}\n*場所*: {event['location']}"}}
             ]
 
-            # 出席者へのリマインド
+            # 1. 出席予定者への最終確認（これは常に送る）
             if attendee_ids:
                 mentions = " ".join([f"<@{sid}>" for sid in attendee_ids])
                 msg_blocks.append({
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"✅ *出席予定の皆様*\n{mentions}\n明日、宜しくお願い致します！"}
+                    "text": {"type": "mrkdwn", "text": f"✅ *出席予定の皆様*\n{mentions}\n明日よろしくお願いします！"}
                 })
 
-            # 未回答者への催促（もし必要なら）
-            #if no_response_ids:
-             #   unresponded_mentions = " ".join([f"<@{sid}>" for sid in no_response_ids])
-              #  msg_blocks.append({
-               #     "type": "section",
-                #    "text": {"type": "mrkdwn", "text": f"❓ *出欠未回答の皆様*\n{unresponded_mentions}\nまだ回答がありません。アプリから回答をお願いします！"}
-                #})
-            
+            # 2. 未回答者への催促（is_remind_all が TRUE の場合のみ実行！）
+            if is_remind_all:
+                all_member_ids = df_members['slack_id'].astype(str).tolist()
+                no_response_ids = [mid for mid in all_member_ids if mid not in attendee_ids and mid not in absentee_ids]
+                
+                if no_response_ids:
+                    unresponded_mentions = " ".join([f"<@{sid}>" for sid in no_response_ids])
+                    msg_blocks.append({
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": f"❓ *出欠未回答の皆様*\n{unresponded_mentions}\nまだ回答がありません。アプリから回答をお願いします！"}
+                    })
+
             # Slack送信
             requests.post(
                 "https://slack.com/api/chat.postMessage",
                 headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
                 json={"channel": "#general", "blocks": msg_blocks}
             )
-            print(f"Reminder sent for {event['event_name']}")
+            print(f"Reminder sent for {event['event_name']} (Remind All: {is_remind_all})")
 
     except Exception as e:
         print(f"Error occurred: {e}")
