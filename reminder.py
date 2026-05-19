@@ -76,7 +76,7 @@ def send_reminder():
             requests.post(
                 "https://slack.com/api/chat.postMessage",
                 headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
-                json={"channel": "#general", "blocks": msg_blocks}
+                json={"channel": "#random", "blocks": msg_blocks}
             )
             print(f"Reminder sent for {event['event_name']} (Remind All: {is_remind_all})")
 
