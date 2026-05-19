@@ -74,11 +74,13 @@ def send_reminder():
                     })
 
             # Slack送信
-            requests.post(
+            res = requests.post(
                 "https://slack.com/api/chat.postMessage",
                 headers={"Authorization": f"Bearer {SLACK_TOKEN}"},
                 json={"channel": "#random", "blocks": msg_blocks}
             )
+            # 💡 ここを追加！Slackからの「本当の返事」をログに出力させる
+            print(f"Slack API Response: {res.json()}") 
             print(f"Reminder sent for {event['event_name']} (Remind All: {is_remind_all})")
 
     except Exception as e:
