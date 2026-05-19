@@ -90,6 +90,9 @@ elif menu == "イベント登録":
         with col2:
             location = st.text_input("場所", placeholder="例：第1会議室")
             status = st.selectbox("ステータス", ["確定", "企画中"])
+            
+        # 💡 ここに催促の有無を選ぶチェックボックスを追加！
+        remind_all = st.checkbox("前日リマインド時に、出欠未回答者への催促も含める", value=True)
         
         if st.form_submit_button("イベントを登録してSlackに通知"):
             if event_name:
@@ -98,6 +101,7 @@ elif menu == "イベント登録":
                     new_id = f"e{len(df_ev) + 1:03}"
                     date_str = date.strftime('%Y-%m-%d')
                     
+                    # 新規行作成（"remind_all" の値を保存する）
                     new_row = pd.DataFrame([{
                         "event_id": new_id,
                         "date": date_str,
@@ -105,7 +109,8 @@ elif menu == "イベント登録":
                         "location": location,
                         "status": status,
                         "attendees": "",
-                        "absentees": ""
+                        "absentees": "",
+                        "remind_all": "TRUE" if remind_all else "FALSE" # GASやPandasで扱いやすいよう文字列で保存
                     }])
                     
                     update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
@@ -115,7 +120,7 @@ elif menu == "イベント登録":
                     st.error(f"エラーが発生しました: {e}")
             else:
                 st.error("イベント名を入力してください。")
-
+                
 # --- 3. メンバー管理 ---
 elif menu == "メンバー管理":
     st.header("⚙️ メンバー管理")
