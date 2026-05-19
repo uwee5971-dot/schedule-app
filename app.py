@@ -32,11 +32,12 @@ def convert_ids_to_names(id_str, name_map):
     names = [name_map.get(sid.strip(), sid.strip()) for sid in ids if sid.strip()]
     return ", ".join(names)
 
+# イベント登録時に出欠アンケートを送信する関数
 def send_attendance_poll(event_id, event_name, date_str):
     if "slack_token" not in st.secrets:
         return None
     token = st.secrets["slack_token"]
-    channel = "#general" # 送信先チャンネル名を確認してください
+    channel = "#general" # 通知を飛ばす実際のチャンネル名に合わせてください
     
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": "📢 新しいイベントが登録されました"}},
@@ -65,13 +66,17 @@ if menu == "イベント一覧":
     st.header("📋 登録済みイベント")
     df_ev = load_data("events")
     
-    # IDを名前に変換する処理を追加
+    # IDを名前に変換する処理
     try:
         name_map = get_id_to_name_map()
         # 表示用のコピーを作成
         display_df = df_ev.copy()
-        display_df['attendees'] = display_df['attendees'].apply(lambda x: convert_ids_to_names(x, name_map))
-        display_df['absentees'] = display_df['absentees'].apply(lambda x: convert_ids_to_names(x, name_map))
+        
+        # 列が存在し、空でないことを考慮して変換
+        if 'attendees' in display_df.columns:
+            display_df['attendees'] = display_df['attendees'].apply(lambda x: convert_ids_to_names(x, name_map))
+        if 'absentees' in display_df.columns:
+            display_df['absentees'] = display_df['absentees'].apply(lambda x: convert_ids_to_names(x, name_map))
         
         st.dataframe(display_df, use_container_width=True)
     except Exception as e:
@@ -91,7 +96,7 @@ elif menu == "イベント登録":
             location = st.text_input("場所", placeholder="例：第1会議室")
             status = st.selectbox("ステータス", ["確定", "企画中"])
             
-        # 💡 ここに催促の有無を選ぶチェックボックスを追加！
+        # 前日リマインド時に催促メッセージをオン/オフするチェックボックス
         remind_all = st.checkbox("前日リマインド時に、出欠未回答者への催促も含める", value=True)
         
         if st.form_submit_button("イベントを登録してSlackに通知"):
@@ -101,7 +106,7 @@ elif menu == "イベント登録":
                     new_id = f"e{len(df_ev) + 1:03}"
                     date_str = date.strftime('%Y-%m-%d')
                     
-                    # 新規行作成（"remind_all" の値を保存する）
+                    # 新規行作成（"remind_all" の設定を文字列形式で保存）
                     new_row = pd.DataFrame([{
                         "event_id": new_id,
                         "date": date_str,
@@ -110,12 +115,19 @@ elif menu == "イベント登録":
                         "status": status,
                         "attendees": "",
                         "absentees": "",
-                        "remind_all": "TRUE" if remind_all else "FALSE" # GASやPandasで扱いやすいよう文字列で保存
+                        "remind_all": "TRUE" if remind_all else "FALSE"
                     }])
                     
+                    # スプレッドシートを更新
                     update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
-                    send_attendance_poll(new_id, event_name, date_str)
-                    st.success(f"「{event_name}」を登録しました！")
+                    
+                    # ✅ イベント登録直後に、出欠確認用のボタン付き通知をSlackへ送信！
+                    slack_res = send_attendance_poll(new_id, event_name, date_str)
+                    
+                    if slack_res and slack_res.status_code == 200:
+                        st.success(f"「{event_name}」を登録し、Slackに出欠アンケートを送信しました！")
+                    else:
+                        st.warning("イベントは登録されましたが、Slackへの初期通知に失敗しました。アプリがチャンネルに招待されているか確認してください。")
                 except Exception as e:
                     st.error(f"エラーが発生しました: {e}")
             else:
