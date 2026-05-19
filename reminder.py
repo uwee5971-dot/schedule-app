@@ -13,7 +13,7 @@ def load_sheet_as_csv(worksheet_name):
     # sheet_nameによってgidを自動判別するのは難しいため、URLを直書きするか
     # 今回はevents=gid:0, members=gid:（実際のID）を指定する形にする
     # ※eventsが最初のタブならgid=0でOK
-    gid_map = {"events": "0", "members": "1036329402"} # membersのgidは実際のURLで確認して修正してください
+    gid_map = {"events": "0", "members": "1994409943"} # membersのgidは実際のURLで確認して修正してください
     
     url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv&gid={gid_map.get(worksheet_name, '0')}"
     return pd.read_csv(url)
