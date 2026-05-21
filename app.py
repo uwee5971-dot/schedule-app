@@ -4,7 +4,7 @@ from streamlit_gsheets import GSheetsConnection
 from datetime import datetime
 import requests
 
-# --- アプリ基本設定 ---F
+# --- アプリ基本設定 ---
 st.set_page_config(page_title="📅研究室イベント管理", layout="wide")
 st.title("📅 研究室イベント管理")
 
@@ -59,7 +59,8 @@ def send_attendance_poll(event_id, event_name, date_str):
     )
 
 # --- サイドバーメニュー ---
-menu = st.sidebar.selectbox("メニューを選択", ["イベント一覧", "イベント登録", "メンバー管理"])
+# 💡「メンバー管理」をメニューから削除しました！
+menu = st.sidebar.selectbox("メニューを選択", ["イベント一覧", "イベント登録"])
 
 # --- 1. イベント一覧 ---
 if menu == "イベント一覧":
@@ -69,19 +70,35 @@ if menu == "イベント一覧":
     # IDを名前に変換する処理
     try:
         name_map = get_id_to_name_map()
-        # 表示用のコピーを作成
         display_df = df_ev.copy()
         
-        # 列が存在し、空でないことを考慮して変換
+        # 列が存在すればIDを名前に変換
         if 'attendees' in display_df.columns:
             display_df['attendees'] = display_df['attendees'].apply(lambda x: convert_ids_to_names(x, name_map))
         if 'absentees' in display_df.columns:
             display_df['absentees'] = display_df['absentees'].apply(lambda x: convert_ids_to_names(x, name_map))
         
-        st.dataframe(display_df, use_container_width=True)
+        # 💡 日本語の分かりやすい列名に変更
+        rename_dict = {
+            "date": "開催日",
+            "event_name": "イベント名",
+            "location": "場所",
+            "status": "ステータス",
+            "attendees": "出席者",
+            "absentees": "欠席者"
+        }
+        display_df = display_df.rename(columns=rename_dict)
+        
+        # 💡 ユーザーに見せる必要のない内部用ID（event_id）や、催促フラグ（remind_all）を画面上だけ非表示に！
+        show_columns = ["開催日", "イベント名", "場所", "ステータス", "出席者", "欠席者"]
+        # スプレッドシート側の列が足りない場合のエラーを防ぎつつ、存在する列だけを絞り込む
+        existing_show_columns = [col for col in show_columns if col in display_df.columns]
+        
+        st.dataframe(display_df[existing_show_columns], use_container_width=True)
+        
     except Exception as e:
-        st.error(f"表示変換中にエラーが発生しました。membersシートの項目を確認してください: {e}")
-        st.dataframe(df_ev, use_container_width=True) # 失敗した場合はIDのまま表示
+        st.error(f"表示変換中にエラーが発生しました。スプレッドシートの項目を確認してください: {e}")
+        st.dataframe(df_ev, use_container_width=True)
 
 # --- 2. イベント登録 ---
 elif menu == "イベント登録":
@@ -106,7 +123,7 @@ elif menu == "イベント登録":
                     new_id = f"e{len(df_ev) + 1:03}"
                     date_str = date.strftime('%Y-%m-%d')
                     
-                    # 新規行作成（"remind_all" の設定を文字列形式で保存）
+                    # 新規行作成（スプシの裏側には、これまで通りevent_idやremind_allをしっかり保存）
                     new_row = pd.DataFrame([{
                         "event_id": new_id,
                         "date": date_str,
@@ -118,28 +135,16 @@ elif menu == "イベント登録":
                         "remind_all": "TRUE" if remind_all else "FALSE"
                     }])
                     
-                    # スプレッドシートを更新
                     update_data("events", pd.concat([df_ev, new_row], ignore_index=True))
                     
-                    # ✅ イベント登録直後に、出欠確認用のボタン付き通知をSlackへ送信！
+                    # 出欠確認用のボタン付き通知をSlackへ送信
                     slack_res = send_attendance_poll(new_id, event_name, date_str)
                     
                     if slack_res and slack_res.status_code == 200:
                         st.success(f"「{event_name}」を登録し、Slackに出欠アンケートを送信しました！")
                     else:
-                        st.warning("イベントは登録されましたが、Slackへの初期通知に失敗しました。アプリがチャンネルに招待されているか確認してください。")
+                        st.warning("イベントは登録されましたが、Slackへの初期通知に失敗しました。")
                 except Exception as e:
                     st.error(f"エラーが発生しました: {e}")
             else:
                 st.error("イベント名を入力してください。")
-                
-# --- 3. メンバー管理 ---
-elif menu == "メンバー管理":
-    st.header("⚙️ メンバー管理")
-    df_members = load_data("members")
-    edited_df = st.data_editor(df_members, num_rows="dynamic", use_container_width=True)
-    
-    if st.button("メンバーリストを保存"):
-        update_data("members", edited_df)
-        st.success("メンバーリストを更新しました！")
-        st.rerun()
