@@ -2,9 +2,10 @@ name: Daily Event Reminder
 
 on:
   schedule:
-    # 毎日 UTC 12:00 (日本時間 21:00) に実行
-    - cron: '0 12 * * *'
-  workflow_dispatch: # 手動実行ボタンも追加
+    # 日本時間 21:00 に動かしたい場合、UTC 12:00 だが、
+    # サーバーの遅延を考慮して 日本時間 20:30 (UTC 11:30) に設定する
+    - cron: '30 11 * * *'
+  workflow_dispatch:
 
 jobs:
   remind:
