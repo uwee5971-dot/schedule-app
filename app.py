@@ -147,7 +147,7 @@ elif menu == "イベント状況・確定":
                 if pd.notna(votes_str) and str(votes_str).strip() != "":
                     try:
                         votes = json.loads(votes_str)
-                    except: 
+                    except:
                         pass
                 
                 status_mark = "🟢 投票中" if row['status'] == "VOTING" else "🔴 確定済"
@@ -155,3 +155,36 @@ elif menu == "イベント状況・確定":
                 
                 if row['status'] == "VOTING":
                     st.write(f"自動確定の目標: **{row['target_votes']}票** / 期限: **{row['deadline']}**")
+                
+                st.markdown("**【得票状況】**")
+                for i, cand in enumerate(candidates):
+                    voters = votes.get(str(i), [])
+                    st.markdown(f"* **{cand}** : {len(voters)} 票")
+                
+                if row['status'] == "VOTING":
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        selected_idx = st.selectbox(
+                            "どの日程で確定するか選択", 
+                            range(len(candidates)), 
+                            format_func=lambda x: candidates[x], 
+                            key=f"sel_{row['event_id']}"
+                        )
+                    with col2:
+                        st.write("")
+                        st.write("")
+                        if st.button("手動で確定する", key=f"btn_{row['event_id']}"):
+                            df_ev.at[index, 'status'] = 'FIXED'
+                            df_ev.at[index, 'final_choice'] = selected_idx
+                            update_data("events", df_ev)
+                            st.success(f"「{candidates[selected_idx]}」で日程を確定した！")
+                            st.rerun()
+                elif row['status'] == "FIXED":
+                    final_idx = int(row['final_choice']) if pd.notna(row['final_choice']) and str(row['final_choice']).isdigit() else -1
+                    if final_idx >= 0 and final_idx < len(candidates):
+                        st.info(f"最終決定日時： **{candidates[final_idx]}**")
+                
+                st.markdown("---")
+                
+    except Exception as e:
+        st.error(f"データの読み込み中にエラーが発生した: {e}")
