@@ -154,4 +154,4 @@ elif menu == "イベント状況・確定":
                 st.subheader(f"{status_mark} : {row['event_name']}")
                 
                 if row['status'] == "VOTING":
-                    st.write(f"自動確定の目標: **{row['target_votes']}票
+                    st.write(f"自動確定の目標: **{row['target_votes']}票** / 期限: **{row['deadline']}**")
