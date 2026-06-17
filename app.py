@@ -147,7 +147,7 @@ elif menu == "イベント状況・確定":
                 if pd.notna(votes_str) and str(votes_str).strip() != "":
                     try:
                         votes = json.loads(votes_str)
-                    except:
+                    except: 
                         pass
                 
                 status_mark = "🟢 投票中" if row['status'] == "VOTING" else "🔴 確定済"
