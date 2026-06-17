@@ -28,7 +28,7 @@ def send_multi_candidate_poll(event_id, event_name, candidates):
     
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": "📢 新しいイベントの日程調整"}},
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"*イベント名*: {event_name}\n以下の候補から参加可能な日時を【すべて】選んでほしい。"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*イベント名*: {event_name}\n以下の候補から、参加可能な日時を【すべて】お選びください。"}},
     ]
     
     # 候補日をボタン化する（Slackの制約上、1つのactionsブロックには最大5つまで配置可能）
